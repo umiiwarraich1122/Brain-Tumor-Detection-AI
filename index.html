@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Brain Tumor Detection System</title>
+    
+    <!-- Tailwind CSS (via CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        medical: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            900: '#0c4a6e',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- React & ReactDOM (via external CDN) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-text {
+            background: linear-gradient(135deg, #0284c7, #0ea5e9);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in-out forwards;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .pulse-ring {
+            animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(14, 165, 233, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(14, 165, 233, 0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen text-gray-800">
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useRef, useEffect } = React;
+
+        // Custom Icon wrapper since Lucide doesn't easily convert to React components via CDN natively without the React package wrap
+        const Icon = ({ name, size = 24, className = "" }) => {
+            const iconRef = useRef(null);
+            useEffect(() => {
+                if (iconRef.current) {
+                    lucide.createIcons({
+                        icons: { [name]: true },
+                        nameAttr: 'data-lucide',
+                        attrs: {
+                            class: className,
+                            width: size,
+                            height: size,
+                            stroke: "currentColor",
+                            "stroke-width": 2,
+                            "stroke-linecap": "round",
+                            "stroke-linejoin": "round"
+                        }
+                    });
+                    // manually insert the icon SVG
+                    const element = document.createElement('i');
+                    element.setAttribute('data-lucide', name);
+                    element.setAttribute('class', className);
+                    iconRef.current.innerHTML = '';
+                    iconRef.current.appendChild(element);
+                    lucide.createIcons({ root: iconRef.current });
+                }
+            }, [name, size, className]);
+            return <span ref={iconRef} className="inline-flex items-center justify-center"></span>;
+        };
+
+        const App = () => {
+            const [selectedFile, setSelectedFile] = useState(null);
+            const [previewUrl, setPreviewUrl] = useState(null);
+            const [isAnalyzing, setIsAnalyzing] = useState(false);
+            const [result, setResult] = useState(null);
+            const [error, setError] = useState(null);
+
+            const fileInputRef = useRef(null);
+
+            const handleFileSelect = (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    setSelectedFile(file);
+                    setPreviewUrl(URL.createObjectURL(file));
+                    setResult(null);
+                    setError(null);
+                }
+            };
+
+            const handleDragOver = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            };
+
+            const handleDrop = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const file = e.dataTransfer.files[0];
+                if (file && file.type.startsWith('image/')) {
+                    setSelectedFile(file);
+                    setPreviewUrl(URL.createObjectURL(file));
+                    setResult(null);
+                    setError(null);
+                }
+            };
+
+            const analyzeImage = async () => {
+                if (!selectedFile) return;
+
+                setIsAnalyzing(true);
+                setResult(null);
+                setError(null);
+
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+
+                try {
+                    const response = await fetch('http://localhost:8002/api/predict', {
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Server error: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+
+                    // Simulate slight delay for better UX and perception of "AI thinking"
+                    setTimeout(() => {
+                        setResult(data);
+                        setIsAnalyzing(false);
+                    }, 800);
+
+                } catch (err) {
+                    console.error("Analysis failed:", err);
+                    setError(err.message || "Failed to connect to the analysis server. Make sure the Python backend is running.");
+                    setIsAnalyzing(false);
+                }
+            };
+
+            const resetApp = () => {
+                setSelectedFile(null);
+                setPreviewUrl(null);
+                setResult(null);
+                setError(null);
+                if (fileInputRef.current) {
+                    fileInputRef.current.value = "";
+                }
+            };
+
+            return (
+                <div className="flex flex-col min-h-screen">
+                    {/* Header */}
+                    <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+                        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+                            <div className="flex items-center gap-2 cursor-pointer" onClick={resetApp}>
+                                <div className="bg-medical-500 text-white p-2 rounded-lg">
+                                    <Icon name="activity" size={20} className="text-white" />
+                                </div>
+                                <h1 className="text-xl font-bold text-medical-900 tracking-tight">Neuro<span className="text-medical-500">Scan</span> AI</h1>
+                            </div>
+                            <nav>
+                                <a href="#" className="text-sm font-medium text-gray-500 hover:text-medical-600 transition-colors">Documentation</a>
+                            </nav>
+                        </div>
+                    </header>
+
+                    {/* Main Content */}
+                    <main className="flex-grow flex flex-col pt-8 pb-20 items-center justify-center px-4">
+                        
+                        {/* Hero Section */}
+                        {!selectedFile && (
+                            <div className="text-center max-w-4xl mb-12 fade-in">
+                                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-medical-50 text-medical-600 text-sm font-medium mb-6 shadow-sm border border-medical-100">
+                                    <span className="relative flex h-2 w-2">
+                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-medical-400 opacity-75"></span>
+                                      <span className="relative inline-flex rounded-full h-2 w-2 bg-medical-500"></span>
+                                    </span>
+                                    Powered by Custom VGG16 CNN
+                                </div>
+                                <h2 className="text-5xl md:text-6xl font-extrabold text-gray-900 mb-6 tracking-tight leading-tight">
+                                    AI-Powered Precision <br/> for <span className="gradient-text">Brain MRI Diagnostics</span>
+                                </h2>
+                                <p className="text-lg md:text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed mb-10">
+                                    Upload a brain MRI scan and receive instant predictive analysis powered by advanced deep learning trained on high-quality medical datasets.
+                                </p>
+                                
+                                {/* Image showcase */}
+                                <div className="flex justify-center gap-4 opacity-80 pointer-events-none mb-4">
+                                    <div className="w-32 h-32 rounded-2xl overflow-hidden shadow-lg border-4 border-white transform -rotate-6 transition-transform group-hover:rotate-0 duration-500">
+                                        <img src="https://images.unsplash.com/photo-1559757175-5700dde675bc?auto=format&fit=crop&q=80&w=200&h=200" alt="MRI sample 1" className="w-full h-full object-cover filter grayscale hover:grayscale-0 transition-all duration-500"/>
+                                    </div>
+                                    <div className="w-36 h-36 rounded-2xl overflow-hidden shadow-xl border-4 border-white z-10 transform scale-105 transition-transform duration-500">
+                                        <img src="https://images.unsplash.com/photo-1530497610245-94d3c16cda28?auto=format&fit=crop&q=80&w=250&h=250" alt="MRI Tech" className="w-full h-full object-cover filter brightness-110"/>
+                                    </div>
+                                    <div className="w-32 h-32 rounded-2xl overflow-hidden shadow-lg border-4 border-white transform rotate-6 transition-transform group-hover:rotate-0 duration-500">
+                                        <img src="https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&q=80&w=200&h=200" alt="MRI sample 2" className="w-full h-full object-cover filter grayscale hover:grayscale-0 transition-all duration-500"/>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Upload & Results Area */}
+                        <div className="w-full max-w-4xl mx-auto">
+                            <div className="bg-white rounded-2xl shadow-xl shadow-medical-900/5 border border-gray-100 overflow-hidden fade-in relative">
+                                
+                                {/* Background decorative pattern */}
+                                <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-medical-50 to-white opacity-50 pointer-events-none"></div>
+
+                                <div className="p-8 md:p-12 relative z-10 flex flex-col md:flex-row gap-10">
+                                    
+                                    {/* Left Column: Upload / Preview */}
+                                    <div className="flex-1">
+                                        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                                            <Icon name="image" size={20} className="text-medical-500"/> MRI Scan Input
+                                        </h3>
+                                        
+                                        {!previewUrl ? (
+                                            <div 
+                                                className="border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 hover:bg-medical-50 hover:border-medical-300 transition-all duration-200 ease-in-out cursor-pointer h-64 flex flex-col items-center justify-center p-6 text-center group"
+                                                onClick={() => fileInputRef.current.click()}
+                                                onDragOver={handleDragOver}
+                                                onDrop={handleDrop}
+                                            >
+                                                <div className="bg-white p-4 rounded-full shadow-sm mb-4 group-hover:scale-110 transition-transform duration-200">
+                                                    <Icon name="upload-cloud" size={32} className="text-medical-500" />
+                                                </div>
+                                                <p className="text-sm font-medium text-gray-700">Click to upload or drag & drop</p>
+                                                <p className="text-xs text-gray-500 mt-2">JPEG, PNG, JPG (max 10MB)</p>
+                                                <input 
+                                                    type="file" 
+                                                    ref={fileInputRef} 
+                                                    onChange={handleFileSelect} 
+                                                    accept="image/*" 
+                                                    className="hidden" 
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div className="relative rounded-xl overflow-hidden shadow-md group h-64 bg-black">
+                                                <img 
+                                                    src={previewUrl} 
+                                                    alt="MRI Scan Preview" 
+                                                    className={`w-full h-full object-contain ${isAnalyzing ? 'opacity-50 blur-sm' : ''} transition-all duration-500`} 
+                                                />
+                                                {isAnalyzing && (
+                                                    <div className="absolute inset-0 flex flex-col items-center justify-center text-white z-10">
+                                                        <div className="w-16 h-16 border-4 border-white/20 border-t-medical-500 rounded-full animate-spin mb-4"></div>
+                                                        <p className="font-medium tracking-wide">AI Neural Engine Active<span className="animate-pulse">...</span></p>
+                                                    </div>
+                                                )}
+                                                {!isAnalyzing && !result && (
+                                                     <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm p-1.5 rounded-lg shadow-sm cursor-pointer hover:bg-white transition-colors" onClick={resetApp}>
+                                                         <Icon name="x" size={18} className="text-gray-600 hover:text-red-500" />
+                                                     </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {previewUrl && !result && !isAnalyzing && (
+                                            <button 
+                                                onClick={analyzeImage}
+                                                className="w-full mt-6 bg-medical-600 hover:bg-medical-700 text-white font-semibold py-3.5 px-6 rounded-xl shadow-lg shadow-medical-500/30 transition-all duration-200 flex items-center justify-center gap-2 group"
+                                            >
+                                                <Icon name="cpu" size={20} className="group-hover:rotate-12 transition-transform" />
+                                                Run AI Diagnostics
+                                            </button>
+                                        )}
+                                        {result && (
+                                             <button 
+                                                onClick={resetApp}
+                                                className="w-full mt-6 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-semibold py-3 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-2"
+                                            >
+                                                <Icon name="refresh-cw" size={18} />
+                                                Analyze New Scan
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {/* Right Column: Results */}
+                                    <div className="flex-1 flex flex-col lg:border-l border-gray-100 lg:pl-10">
+                                         <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                                            <Icon name="file-text" size={20} className="text-medical-500"/> Diagnostic Results
+                                        </h3>
+
+                                        {!previewUrl && (
+                                            <div className="flex-grow flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-gray-100 rounded-xl bg-gray-50/50 h-64">
+                                                <Icon name="file-search" size={48} className="text-gray-300 mb-4" />
+                                                <p className="text-gray-500 text-sm">Upload an MRI scan to view the AI prediction analysis here.</p>
+                                            </div>
+                                        )}
+
+                                        {isAnalyzing && (
+                                            <div className="flex-grow flex flex-col items-center justify-center h-64 fade-in">
+                                                <div className="w-16 h-16 rounded-full bg-medical-100 flex items-center justify-center mb-6 pulse-ring">
+                                                    <Icon name="activity" size={28} className="text-medical-600 animate-pulse" />
+                                                </div>
+                                                <h4 className="text-lg font-medium text-gray-900 mb-2">Analyzing Scan</h4>
+                                                <p className="text-sm text-gray-500 text-center max-w-[250px]">Extracting features and running through VGG16 pathways...</p>
+                                                
+                                                <div className="w-full max-w-[200px] h-1.5 bg-gray-200 rounded-full mt-8 overflow-hidden">
+                                                    <div className="h-full bg-medical-500 rounded-full animate-[progress_2s_ease-in-out_infinite]" style={{width: '60%'}}></div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {error && (
+                                            <div className="flex-grow flex flex-col justify-center h-64 fade-in">
+                                                <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-red-700">
+                                                    <div className="flex items-center gap-3 mb-2 font-semibold">
+                                                        <Icon name="alert-circle" size={20} className="text-red-500"/> Analysis Error
+                                                    </div>
+                                                    <p className="text-sm">{error}</p>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {result && (
+                                            <div className="flex-grow flex flex-col fade-in space-y-4">
+                                                {/* Prediction Banner */}
+                                                <div className={`p-5 rounded-xl border ${result.tumor_detected ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'} flex items-start gap-4 shadow-sm`}>
+                                                    <div className={`p-3 rounded-full shrink-0 ${result.tumor_detected ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                                                        <Icon name={result.tumor_detected ? "alert-triangle" : "check-circle-2"} size={28} />
+                                                    </div>
+                                                    <div>
+                                                        <div className={`text-sm font-semibold uppercase tracking-wider mb-1 ${result.tumor_detected ? 'text-red-600' : 'text-emerald-700'}`}>
+                                                            AI Diagnosis
+                                                        </div>
+                                                        <h4 className={`text-2xl font-bold ${result.tumor_detected ? 'text-red-800' : 'text-emerald-800'}`}>
+                                                            {result.tumor_detected ? 'Tumor Detected' : 'No Tumor Found'}
+                                                        </h4>
+                                                    </div>
+                                                </div>
+
+                                                {/* Confidence Score */}
+                                                <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mt-4">
+                                                    <div className="flex justify-between items-center mb-3">
+                                                        <span className="text-sm font-medium text-gray-600 flex items-center gap-2">
+                                                            <Icon name="trending-up" size={16} className="text-gray-400" />
+                                                            Model Confidence
+                                                        </span>
+                                                        <span className="text-xl font-bold text-gray-900">{result.confidence}%</span>
+                                                    </div>
+                                                    <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                                                        <div 
+                                                            className={`h-full rounded-full transition-all duration-1000 ease-out ${result.confidence > 90 ? 'bg-medical-500' : result.confidence > 70 ? 'bg-yellow-400' : 'bg-red-400'}`} 
+                                                            style={{width: '0%', '--target-width': `${result.confidence}%`}}
+                                                            ref={(el) => { if(el) setTimeout(() => {el.style.width = el.style.getPropertyValue('--target-width')}, 100) }}
+                                                        ></div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="bg-blue-50/50 rounded-lg p-4 mt-auto">
+                                                    <p className="text-xs text-gray-500 flex gap-2">
+                                                        <Icon name="info" size={16} className="text-medical-400 shrink-0" />
+                                                        This is an AI-assisted prediction tool. Results should always be verified by a qualified radiologist or medical professional.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </main>
+
+                    {/* Footer */}
+                    <footer className="bg-white border-t border-gray-200 mt-auto">
+                        <div className="max-w-6xl mx-auto px-4 py-8 flex flex-col md:flex-row items-center justify-between gap-4">
+                            <div className="flex items-center gap-2">
+                                <div className="bg-medical-50 p-1.5 rounded-md">
+                                    <Icon name="activity" size={18} className="text-medical-600" />
+                                </div>
+                                <span className="text-sm font-bold text-gray-900 tracking-tight">NeuroScan <span className="text-medical-500">AI</span></span>
+                            </div>
+                            
+                            <div className="flex flex-col items-center text-center">
+                                <p className="text-sm font-medium text-gray-700 bg-gray-50 px-4 py-1.5 rounded-full border border-gray-100 shadow-sm transition-transform hover:scale-105">
+                                    Developed by <span className="font-bold text-medical-600">Muhammad Umair Ashraf</span>
+                                </p>
+                                <p className="text-xs text-gray-400 mt-2">
+                                    For research and assistive diagnostics. Powered by VGG16.
+                                </p>
+                            </div>
+
+                            <div className="flex items-center gap-4">
+                                <a href="#" className="text-gray-400 hover:text-medical-600 transition-colors transform hover:scale-110">
+                                    <Icon name="github" size={20} />
+                                </a>
+                                <a href="#" className="text-gray-400 hover:text-medical-600 transition-colors transform hover:scale-110">
+                                    <Icon name="linkedin" size={20} />
+                                </a>
+                            </div>
+                        </div>
+                    </footer>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+
+        // Handle some basic css animation overrides
+        const style = document.createElement('style');
+        style.innerHTML = `
+            @keyframes progress {
+                0% { transform: translateX(-100%); }
+                50% { transform: translateX(50%); }
+                100% { transform: translateX(200%); }
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>
